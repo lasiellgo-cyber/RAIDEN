@@ -8,7 +8,7 @@ from PIL import Image
 import torchxrayvision as xrv
 
 DEVICE = "cpu"
-HF_URL = "https://huggingface.co/LASIELL/rx-modelo/resolve/main/raiden_modelo.pth?download=true"
+HF_URL = HF_URL = "https://huggingface.co/LASIELL/RAIDEN/resolve/main/raiden_modelo.pth?download=true"
 MODEL_CACHE = "/tmp/raiden_modelo.pth"
 MODEL_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_entrenados", "raiden_modelo.pth")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
