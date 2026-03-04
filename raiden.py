@@ -22,7 +22,7 @@ UMBRAL_MEDIO = 0.12
 
 st.set_page_config(page_title="RUBÉN — Diagnóstico RX", page_icon="🩻", layout="wide")
 
-# --- ESTILOS VISUALES (REVISADOS) ---
+# --- ESTILOS VISUALES ---
 st.markdown("""
 <style>
 :root{--bg:#05080f;--card:#0f1726;--cyan:#00d4ff;--green:#00e676;--red:#ff3d5a;--yellow:#ffc400;--text:#c8d8f0;}
@@ -42,7 +42,8 @@ def cargar_modelo():
         try:
             urllib.request.urlretrieve(HF_URL, MODEL_CACHE)
             path = MODEL_CACHE
-        except: pass
+        except:
+            pass
     if path:
         try:
             state_dict = torch.load(path, map_location="cpu", weights_only=False)
@@ -63,4 +64,31 @@ if archivo:
     col1, col2 = st.columns([1, 1.2])
     img_pil = Image.open(archivo).convert("L")
     with col1:
-        st.image(img
+        st.image(img_pil, use_container_width=True, caption="Imagen para análisis")
+    with col2:
+        img_arr = np.array(img_pil)
+        img_arr = xrv.datasets.normalize(img_arr, 255)
+        t = torch.from_numpy(img_arr[None, None, :, :]).float()
+        t = torch.nn.functional.interpolate(t, size=(224, 224))
+        # Normalización sincronizada con el entrenamiento
+        t = (t * 2048.0) - 1024.0
+        
+        with torch.no_grad():
+            preds = torch.sigmoid(modelo(t)).numpy()[0][:14]
+        
+        positivos = sorted([(CATEGORIAS[i], preds[i]) for i in range(14) if preds[i] >= UMBRAL_ALTO], key=lambda x: -x[1])
+        sugestivos = sorted([(CATEGORIAS[i], preds[i]) for i in range(14) if UMBRAL_MEDIO <= preds[i] < UMBRAL_ALTO], key=lambda x: -x[1])
+        
+        if positivos:
+            st.markdown(f'<div class="anormal"><h3>⚠ ESTADO: ANORMAL</h3>Se han detectado {len(positivos)} hallazgos.</div>', unsafe_allow_html=True)
+        elif sugestivos:
+            st.markdown(f'<div class="sugestivo"><h3>🔍 HALLAZGOS SUGESTIVOS</h3>Existen sospechas que requieren revisión clínica.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="normal"><h3>✓ EXPLORACIÓN NORMAL</h3>No se observan hallazgos significativos.</div>', unsafe_allow_html=True)
+            
+        todos = positivos + sugestivos
+        if todos:
+            st.subheader("Informe del Asistente")
+            for cat, prob in todos:
+                color = "#ff3d5a" if prob >= UMBRAL_ALTO else "#ffc400"
+                st.markdown(f'<div class="seccion"><b style="color:{color}">{cat.upper()} ({prob*100:.1f}%)</b><br><small><b>Zona:</b> {ZONA[cat]}</small><br><i>{HALLAZGO[cat]}</i></div>', unsafe_allow_html=True)
