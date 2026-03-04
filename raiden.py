@@ -19,8 +19,8 @@ ZONA = {"Atelectasia":"Pulmón lóbulo inferior","Cardiomegalia":"Corazón / Med
 
 HALLAZGO = {"Atelectasia":"Opacidad laminar con pérdida de volumen y desplazamiento de fisuras","Cardiomegalia":"Índice cardiotorácico > 0.5, silueta cardíaca aumentada","Efusión":"Opacificación del seno costofrénico con menisco pleural","Infiltración":"Opacidades heterogéneas de predominio peribronquial","Masa":"Opacidad redondeada > 3 cm con bordes bien definidos","Nódulo":"Opacidad redondeada < 3 cm, bordes pueden ser espiculados","Neumonía":"Consolidación alveolar con broncograma aéreo positivo","Neumotórax":"Línea pleural visible, ausencia de trama vascular periférica","Consolidación":"Opacidad homogénea con broncograma aéreo","Edema":"Opacidades bilaterales perihiliares en alas de mariposa","Enfisema":"Hiperinsuflación, aplanamiento diafragmático","Fibrosis":"Opacidades reticulares basales bilaterales","Eng.Pleural":"Opacidad pleural periférica sin menisco","Hernia":"Estructura abdominal por encima del diafragma"}
 
-UMBRAL_ALTO = 0.45
-UMBRAL_MEDIO = 0.25
+UMBRAL_ALTO = 0.25
+UMBRAL_MEDIO = 0.15
 
 st.set_page_config(page_title="RUBÉN — Diagnóstico RX", page_icon="🩻", layout="wide", initial_sidebar_state="collapsed")
 
