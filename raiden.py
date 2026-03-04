@@ -7,139 +7,96 @@ import urllib.request
 from PIL import Image
 import torchxrayvision as xrv
 
+# --- CONFIGURACIÓN Y RUTAS ---
 DEVICE = "cpu"
 HF_URL = "https://huggingface.co/LASIELL/RAIDEN/resolve/main/raiden_modelo.pth?download=true"
 MODEL_CACHE = "/tmp/raiden_modelo.pth"
-MODEL_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raiden_modelo.pth")
+MODEL_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_entrenados", "raiden_modelo.pth")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
 
 CATEGORIAS = ["Atelectasia","Cardiomegalia","Efusión","Infiltración","Masa","Nódulo","Neumonía","Neumotórax","Consolidación","Edema","Enfisema","Fibrosis","Eng.Pleural","Hernia"]
+ZONA = {"Atelectasia":"Pulmón lóbulo inferior","Cardiomegalia":"Corazón / Mediastino","Efusión":"Espacio pleural","Infiltración":"Parénquima pulmonar","Masa":"Pulmón / Mediastino","Nódulo":"Parénquima pulmonar","Neumonía":"Pulmón consolidación","Neumotórax":"Espacio pleural","Consolidación":"Parénquima","Edema":"Pulmón bilateral","Enfisema":"Pulmón hiperinsuflación","Fibrosis":"Intersticio","Eng.Pleural":"Pleura","Hernia":"Diafragma"}
+HALLAZGO = {"Atelectasia":"Opacidad laminar con pérdida de volumen","Cardiomegalia":"Silueta cardíaca aumentada","Efusión":"Opacificación del seno costofrénico","Infiltración":"Opacidades heterogéneas","Masa":"Opacidad redondeada > 3 cm","Nódulo":"Opacidad redondeada < 3 cm","Neumonía":"Consolidación con broncograma aéreo","Neumotórax":"Línea pleural visible sin trama vascular","Consolidación":"Opacidad homogénea","Edema":"Opacidades bilaterales perihiliares","Enfisema":"Hiperinsuflación, aplanamiento diafragmático","Fibrosis":"Opacidades reticulares basales","Eng.Pleural":"Opacidad pleural periférica","Hernia":"Estructura abdominal sobre el diafragma"}
 
-ZONA = {"Atelectasia":"Pulmón lóbulo inferior","Cardiomegalia":"Corazón / Mediastino","Efusión":"Espacio pleural","Infiltración":"Parénquima pulmonar","Masa":"Pulmón / Mediastino","Nódulo":"Parénquima pulmonar","Neumonía":"Pulmón consolidación alveolar","Neumotórax":"Espacio pleural / Apex","Consolidación":"Parénquima pulmonar","Edema":"Pulmón bilateral / Hilio","Enfisema":"Pulmón hiperinsuflación","Fibrosis":"Intersticio pulmonar","Eng.Pleural":"Pleura","Hernia":"Diafragma / Mediastino inferior"}
+UMBRAL_ALTO = 0.45
+UMBRAL_MEDIO = 0.20 # Bajamos un poco para no perder sospechas
 
-HALLAZGO = {"Atelectasia":"Opacidad laminar con pérdida de volumen y desplazamiento de fisuras","Cardiomegalia":"Índice cardiotorácico > 0.5, silueta cardíaca aumentada","Efusión":"Opacificación del seno costofrénico con menisco pleural","Infiltración":"Opacidades heterogéneas de predominio peribronquial","Masa":"Opacidad redondeada > 3 cm con bordes bien definidos","Nódulo":"Opacidad redondeada < 3 cm, bordes pueden ser espiculados","Neumonía":"Consolidación alveolar con broncograma aéreo positivo","Neumotórax":"Línea pleural visible, ausencia de trama vascular periférica","Consolidación":"Opacidad homogénea con broncograma aéreo","Edema":"Opacidades bilaterales perihiliares en alas de mariposa","Enfisema":"Hiperinsuflación, aplanamiento diafragmático","Fibrosis":"Opacidades reticulares basales bilaterales","Eng.Pleural":"Opacidad pleural periférica sin menisco","Hernia":"Estructura abdominal por encima del diafragma"}
+st.set_page_config(page_title="RUBÉN — Diagnóstico RX", page_icon="🩻", layout="wide")
 
-UMBRAL_ALTO = 0.25
-UMBRAL_MEDIO = 0.15
-
-st.set_page_config(page_title="RUBÉN — Diagnóstico RX", page_icon="🩻", layout="wide", initial_sidebar_state="collapsed")
-
+# --- ESTILOS ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
-:root{--bg:#05080f;--card:#0f1726;--border:#1a2540;--cyan:#00d4ff;--green:#00e676;--red:#ff3d5a;--yellow:#ffc400;--text:#c8d8f0;--muted:#4a6080;}
-*{font-family:'IBM Plex Sans',sans-serif !important;}
+:root{--bg:#05080f;--card:#0f1726;--cyan:#00d4ff;--green:#00e676;--red:#ff3d5a;--yellow:#ffc400;--text:#c8d8f0;}
 .stApp{background:var(--bg) !important;color:var(--text) !important;}
-.block-container{padding:1.5rem 2rem 3rem !important;max-width:1300px !important;}
-#MainMenu,footer,header{visibility:hidden !important;}
-.normal{background:linear-gradient(135deg,#001a0a,#002210);border:2px solid var(--green);border-radius:12px;padding:24px 28px;margin:12px 0;}
-.anormal{background:linear-gradient(135deg,#1a0008,#220010);border:2px solid var(--red);border-radius:12px;padding:24px 28px;margin:12px 0;}
-.seccion{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin:10px 0;}
-.hallazgo{border-left:3px solid var(--yellow);padding:8px 14px;margin:8px 0;background:#0d1220;border-radius:0 6px 6px 0;}
-.diagnostico{background:linear-gradient(135deg,#0a0f20,#0f1530);border:1px solid var(--cyan);border-radius:10px;padding:20px 24px;margin:10px 0;}
-.zona-tag{display:inline-block;background:#0a1530;border:1px solid var(--border);color:var(--cyan);font-size:0.75rem;padding:4px 12px;border-radius:4px;margin:3px;}
+.normal{background:rgba(0,230,118,0.1);border:2px solid var(--green);border-radius:12px;padding:20px;margin-bottom:20px;}
+.anormal{background:rgba(255,61,90,0.1);border:2px solid var(--red);border-radius:12px;padding:20px;margin-bottom:20px;}
+.sugestivo{background:rgba(255,196,0,0.1);border:2px solid var(--yellow);border-radius:12px;padding:20px;margin-bottom:20px;}
+.seccion{background:var(--card);border-radius:10px;padding:15px;margin:10px 0;border:1px solid #1a2540;}
+.hallazgo-item{border-left:3px solid var(--cyan);padding-left:15px;margin:10px 0;}
 </style>
 """, unsafe_allow_html=True)
 
 @st.cache_resource
 def cargar_modelo():
     modelo = xrv.models.DenseNet(weights="densenet121-res224-all")
-    modelo.op_threshs = None
-    modelo.classifier = nn.Linear(modelo.classifier.in_features, 14)
-    tipo = "BASE"
-
-    # Borrar caché viejo para forzar descarga nueva
-    if os.path.exists(MODEL_CACHE):
-        os.remove(MODEL_CACHE)
-
-    path = None
-    if os.path.exists(MODEL_LOCAL) and os.path.getsize(MODEL_LOCAL) > 1000000:
-        path = MODEL_LOCAL
-        tipo = "ENTRENADO LOCAL"
-    else:
-        try:
-            st.info("Descargando modelo entrenado...")
-            urllib.request.urlretrieve(HF_URL, MODEL_CACHE)
-            if os.path.exists(MODEL_CACHE) and os.path.getsize(MODEL_CACHE) > 1000000:
-                path = MODEL_CACHE
-                tipo = "ENTRENADO HF"
-        except Exception as e:
-            st.warning(f"No se pudo descargar modelo: {e}")
-
+    # Intentar cargar local, luego cache, luego descargar
+    path = MODEL_LOCAL if os.path.exists(MODEL_LOCAL) else (MODEL_CACHE if os.path.exists(MODEL_CACHE) else None)
+    if not path:
+        try: urllib.request.urlretrieve(HF_URL, MODEL_CACHE); path = MODEL_CACHE
+        except: pass
     if path:
-        try:
-            modelo.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=False)
-        except:
-            try:
-                modelo.load_state_dict(torch.load(path, map_location="cpu"), strict=False)
-            except:
-                tipo = "BASE (error al cargar)"
-
+        state_dict = torch.load(path, map_location="cpu")
+        modelo.load_state_dict(state_dict, strict=False)
     modelo.eval()
-    return modelo, tipo
+    return modelo
 
-def analizar(imagen_pil, modelo):
-    img = np.array(imagen_pil.convert("L"))
-    img = xrv.datasets.normalize(img, 255)
-    t = torch.from_numpy(img[None, None, :, :]).float()
-    t = torch.nn.functional.interpolate(t, size=(224, 224))
-    with torch.no_grad():
-        feats = modelo.features2(t)
-        preds = torch.sigmoid(modelo.classifier(feats)).numpy()[0]
-    return preds
+# --- INTERFAZ ---
+st.title("🩻 Proyecto RAIDEN")
+modelo = cargar_modelo()
 
-col_logo, col_titulo = st.columns([1, 6])
-with col_logo:
-    if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=160)
-with col_titulo:
-    st.markdown("""
-    <div style="padding-top:20px;">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:1.8rem;font-weight:700;color:#00d4ff;letter-spacing:3px;">RAIDEN</div>
-        <div style="font-size:0.75rem;color:#4a6080;letter-spacing:2px;">RADIOLOGÍA CON IA PARA DIAGNÓSTICO ESPECIALIZADO NEURONAL · SCS CANARIAS</div>
-    </div>
-    """, unsafe_allow_html=True)
-st.divider()
-modelo, tipo_modelo = cargar_modelo()
-col_img, col_res = st.columns([1, 1.4], gap="large")
+archivo = st.file_uploader("Subir Radiografía", type=["jpg","png","jpeg"])
 
-with col_img:
-    archivo = st.file_uploader("Subir radiografía", type=["jpg","jpeg","png"])
-    if archivo:
-        st.image(Image.open(archivo), use_container_width=True)
-        st.caption(f"Modelo: {tipo_modelo}")
+if archivo:
+    col1, col2 = st.columns([1, 1.2])
+    img_pil = Image.open(archivo).convert("L")
+    
+    with col1:
+        st.image(img_pil, use_container_width=True, caption="Imagen cargada")
 
-with col_res:
-    if archivo:
-        with st.spinner("Analizando..."):
-            preds = analizar(Image.open(archivo), modelo)
-        positivos  = sorted([(CATEGORIAS[i],preds[i]) for i in range(14) if preds[i]>=UMBRAL_ALTO], key=lambda x:-x[1])
-        sugestivos = sorted([(CATEGORIAS[i],preds[i]) for i in range(14) if UMBRAL_MEDIO<=preds[i]<UMBRAL_ALTO], key=lambda x:-x[1])
-        todas = positivos + sugestivos
+    with col2:
+        # Preprocesamiento idéntico al entrenamiento
+        img_arr = np.array(img_pil)
+        img_arr = xrv.datasets.normalize(img_arr, 255)
+        t = torch.from_numpy(img_arr[None, None, :, :]).float()
+        t = torch.nn.functional.interpolate(t, size=(224, 224))
+        # Normalización a rango TXRV
+        t = t * 2048.0 - 1024.0
+        
+        with torch.no_grad():
+            preds = torch.sigmoid(modelo(t)).numpy()[0][:14]
+        
+        # Clasificación por umbrales
+        positivos = sorted([(CATEGORIAS[i], preds[i]) for i in range(14) if preds[i] >= UMBRAL_ALTO], key=lambda x: -x[1])
+        sugestivos = sorted([(CATEGORIAS[i], preds[i]) for i in range(14) if UMBRAL_MEDIO <= preds[i] < UMBRAL_ALTO], key=lambda x: -x[1])
 
+        # --- LÓGICA DE SEMÁFORO CORREGIDA ---
         if positivos:
-            st.markdown(f'<div class="anormal"><div style="font-size:0.7rem;color:#ff3d5a;letter-spacing:3px;">▸ RESULTADO</div><div style="font-size:2.2rem;font-weight:700;color:#ff3d5a;">⚠ ANORMAL</div><div style="font-size:0.85rem;color:#ff8095;margin-top:8px;">{len(positivos)} hallazgo{"s" if len(positivos)>1 else ""} detectado{"s" if len(positivos)>1 else ""}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="anormal"><h3>⚠ ANORMAL</h3>Se han detectado {len(positivos)} hallazgos confirmados.</div>', unsafe_allow_html=True)
+        elif sugestivos:
+            st.markdown(f'<div class="sugestivo"><h3>🔍 HALLAZGOS SUGESTIVOS</h3>Existen sospechas leves que requieren correlación clínica.</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="normal"><div style="font-size:0.7rem;color:#00e676;letter-spacing:3px;">▸ RESULTADO</div><div style="font-size:2.2rem;font-weight:700;color:#00e676;">✓ NORMAL</div><div style="font-size:0.85rem;color:#80e8a0;margin-top:8px;">No se detectan hallazgos patológicos significativos</div></div>', unsafe_allow_html=True)
+            st.markdown('<div class="normal"><h3>✓ NORMAL</h3>No se detectan hallazgos patológicos significativos.</div>', unsafe_allow_html=True)
 
-        if todas:
-            zonas = list(dict.fromkeys([ZONA[p[0]] for p in todas]))
-            zonas_html = "".join([f'<span class="zona-tag">{z}</span>' for z in zonas])
-            st.markdown(f'<div class="seccion"><div style="font-size:0.7rem;color:#00d4ff;letter-spacing:2px;margin-bottom:6px;">▸ PASO 2 / 4</div><div style="font-size:1rem;font-weight:600;margin-bottom:14px;">Zona anatómica afectada</div>{zonas_html}</div>', unsafe_allow_html=True)
-
-            hallazgos_html = "".join([f'<div class="hallazgo"><div style="font-family:monospace;font-size:0.8rem;color:#ffc400;margin-bottom:3px;">{cat} — {prob*100:.0f}%</div><div style="font-size:0.85rem;">{HALLAZGO[cat]}</div></div>' for cat,prob in todas])
-            st.markdown(f'<div class="seccion"><div style="font-size:0.7rem;color:#00d4ff;letter-spacing:2px;margin-bottom:6px;">▸ PASO 3 / 4</div><div style="font-size:1rem;font-weight:600;margin-bottom:14px;">Hallazgos radiológicos</div>{hallazgos_html}</div>', unsafe_allow_html=True)
-
-            if positivos:
-                items = "".join([f'<div style="font-size:1.05rem;color:white;font-weight:500;padding:7px 0;border-bottom:1px solid #1a2540;">{"🔴" if i==0 else "🟡"} {cat} <span style="color:#4a6080;font-size:0.8rem;">({prob*100:.0f}%)</span></div>' for i,(cat,prob) in enumerate(positivos[:3])])
-            else:
-                items = '<div style="font-size:1rem;color:#c8d8f0;padding:7px 0;">⚪ Hallazgos sugestivos — correlacionar clínicamente</div>'
-            st.markdown(f'<div class="diagnostico"><div style="font-size:0.7rem;color:#00d4ff;letter-spacing:3px;margin-bottom:12px;">▸ PASO 4 / 4 · DIAGNÓSTICO PRINCIPAL</div>{items}</div>', unsafe_allow_html=True)
-
-            with st.expander("Ver todas las probabilidades"):
-                for cat,prob in sorted(zip(CATEGORIAS,preds), key=lambda x:-x[1]):
-                    st.progress(float(prob), text=f"{cat}: {prob*100:.0f}%")
-    else:
-        st.markdown('<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:400px;color:#2a4060;text-align:center;"><div style="font-size:4rem;margin-bottom:16px;">🩻</div><div style="font-family:monospace;font-size:0.9rem;letter-spacing:2px;">ESPERANDO IMAGEN</div></div>', unsafe_allow_html=True)
-
-st.caption("⚕️ Solo para uso en investigación. No reemplaza el criterio clínico.")
+        # Mostrar hallazgos
+        todos = positivos + sugestivos
+        if todos:
+            st.subheader("Informe Detallado")
+            for cat, prob in todos:
+                color = "red" if prob >= UMBRAL_ALTO else "orange"
+                st.markdown(f'''
+                <div class="seccion">
+                    <b style="color:{color}">{cat} ({prob*100:.1f}%)</b><br>
+                    <small><b>Zona:</b> {ZONA[cat]}</small><br>
+                    <i>{HALLAZGO[cat]}</i>
+                </div>
+                ''', unsafe_allow_html=True)
