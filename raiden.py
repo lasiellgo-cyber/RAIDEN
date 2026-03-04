@@ -88,18 +88,17 @@ def analizar(imagen_pil, modelo):
         preds = torch.sigmoid(modelo.classifier(feats)).numpy()[0]
     return preds
 
-col_logo, col_titulo = st.columns([1, 8])
+col_logo, col_titulo = st.columns([1, 6])
 with col_logo:
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=80)
+        st.image(LOGO_PATH, width=160)
 with col_titulo:
     st.markdown("""
-    <div style="padding-top:10px;">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:1.8rem;font-weight:700;color:#00d4ff;letter-spacing:3px;">RUBÉN</div>
+    <div style="padding-top:20px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:1.8rem;font-weight:700;color:#00d4ff;letter-spacing:3px;">RAIDEN</div>
         <div style="font-size:0.75rem;color:#4a6080;letter-spacing:2px;">RADIOLOGÍA CON IA PARA DIAGNÓSTICO ESPECIALIZADO NEURONAL · SCS CANARIAS</div>
     </div>
     """, unsafe_allow_html=True)
-
 st.divider()
 modelo, tipo_modelo = cargar_modelo()
 col_img, col_res = st.columns([1, 1.4], gap="large")
