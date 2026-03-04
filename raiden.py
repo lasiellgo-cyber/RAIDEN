@@ -8,7 +8,7 @@ from PIL import Image
 import torchxrayvision as xrv
 
 DEVICE = "cpu"
-HF_URL = HF_URL = "https://huggingface.co/LASIELL/RAIDEN/resolve/main/raiden_modelo.pth?download=true"
+HF_URL = "https://huggingface.co/LASIELL/RAIDEN/resolve/main/raiden_modelo.pth?download=true"
 MODEL_CACHE = "/tmp/raiden_modelo.pth"
 MODEL_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelos_entrenados", "raiden_modelo.pth")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
@@ -47,22 +47,34 @@ def cargar_modelo():
     modelo.op_threshs = None
     modelo.classifier = nn.Linear(modelo.classifier.in_features, 14)
     tipo = "BASE"
+
+    # Borrar caché viejo para forzar descarga nueva
+    if os.path.exists(MODEL_CACHE):
+        os.remove(MODEL_CACHE)
+
+    path = None
     if os.path.exists(MODEL_LOCAL) and os.path.getsize(MODEL_LOCAL) > 1000000:
-        path = MODEL_LOCAL; tipo = "ENTRENADO LOCAL"
-    elif os.path.exists(MODEL_CACHE) and os.path.getsize(MODEL_CACHE) > 1000000:
-        path = MODEL_CACHE; tipo = "ENTRENADO HF"
+        path = MODEL_LOCAL
+        tipo = "ENTRENADO LOCAL"
     else:
-        path = None
         try:
+            st.info("Descargando modelo entrenado...")
             urllib.request.urlretrieve(HF_URL, MODEL_CACHE)
-            if os.path.getsize(MODEL_CACHE) > 1000000:
-                path = MODEL_CACHE; tipo = "ENTRENADO HF"
-        except: pass
+            if os.path.exists(MODEL_CACHE) and os.path.getsize(MODEL_CACHE) > 1000000:
+                path = MODEL_CACHE
+                tipo = "ENTRENADO HF"
+        except Exception as e:
+            st.warning(f"No se pudo descargar modelo: {e}")
+
     if path:
-        try: modelo.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=False)
+        try:
+            modelo.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=False)
         except:
-            try: modelo.load_state_dict(torch.load(path, map_location="cpu"), strict=False)
-            except: pass
+            try:
+                modelo.load_state_dict(torch.load(path, map_location="cpu"), strict=False)
+            except:
+                tipo = "BASE (error al cargar)"
+
     modelo.eval()
     return modelo, tipo
 
@@ -76,7 +88,6 @@ def analizar(imagen_pil, modelo):
         preds = torch.sigmoid(modelo.classifier(feats)).numpy()[0]
     return preds
 
-# HEADER CON LOGO
 col_logo, col_titulo = st.columns([1, 8])
 with col_logo:
     if os.path.exists(LOGO_PATH):
